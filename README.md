@@ -1,74 +1,66 @@
 # NERSC Chatbot Deployment
 
-This repository provides instructions for deploying a Hugging Face LLM model using vLLM the Slurm-based cluster system at NERSC.
+Deploy Hugging Face large language models (LLMs) on NERSC supercomputers using Slurm and the vLLM serving framework. This package supports both command-line interface (CLI) and Python library usage, with utilities for seamless Gradio integration on NERSC JupyterHub.
 
+The deployed models expose an OpenAI-compatible API endpoint powered by vLLM, enabling easy integration with existing OpenAI clients and tools while requiring a secure API key to control and restrict access.
 
-## Prerequisites
-1. Hugging Face Access Token: For models that require special access, create a user access token. Follow the instructions [here](https://huggingface.co/docs/hub/en/security-tokens) to create a Hugging Face access token. Update the [HF_TOKEN](deploy.sh#L11)  in deploy.sh with your token.
+## Quick Start
 
-2. NERSC Account: Ensure you have an active NERSC account and the necessary permissions to run jobs on the Perlmutter system.
+Install the package:
+
+```bash
+module load python
+python -m pip install git+https://github.com/asnaylor/nersc_chatbot_deploy
+```
+
+Deploy a model using the CLI:
+
+```bash
+nersc-chat deploy -A your_account -m meta-llama/Llama-3.1-8B-Instruct
+# Use `nersc-chat deploy --help` for more options
+```
+
+Or deploy using the Python library:
+
+```python
+from nersc_chatbot_deploy import deploy_llm
+
+proc, api_key = deploy_llm(
+    account='your_account',
+    num_gpus=1,
+    queue='shared_interactive',
+    time='01:00:00',
+    job_name='vLLM_test',
+    model='meta-llama/Llama-3.1-8B-Instruct'
+)
+```
+
+## Features
+
+- Deploy LLMs on NERSC Slurm clusters with GPU allocation
+- Monitor Slurm jobs and deployed services
+- Embed Gradio UIs inline within Jupyter notebooks on NERSC JupyterHub
+
+## Installation & Prerequisites
+
+- Active NERSC account with permissions to run jobs on Perlmutter
+- Optional: Hugging Face access token set as `HF_TOKEN` environment variable for certain models
 
 ## Usage
 
-### Submitting a Job via `sbatch`
-To submit a job using `sbatch`, run the following command:
-```bash
-sbatch -A <account_name> deploy.sh meta-llama/Llama-3.3-70B-Instruct --tensor-parallel-size 4
-```
-> [!NOTE]  
-> Replace <account_name> with your NERSC account name and add any other relevant slurm or vllm arguments.
+For detailed usage instructions, including CLI options and Python library examples, please refer to the [Docs](docs/README.md) page.
 
+## Security Best Practices
 
-### Running Interactively with `salloc`
-To run the job interactively, use:
-```bash
-salloc -N 1 -C gpu -G 4 -t 01:00:00 -q interactive -A <account_name>
-./deploy.sh meta-llama/Llama-3.3-70B-Instruct --tensor-parallel-size 4
-```
+- **Protect API Keys and Tokens:** Always store API keys and tokens securely, preferably in environment variables. Avoid hard-coding them in code or sharing publicly.
+- **Use Trusted Models:** Only download and deploy models from reputable and verified sources, such as official Hugging Face repositories or other trusted providers. Verify the integrity and authenticity of the models to avoid potential security risks, such as malicious code or data leaks.
+- **Respect Data Privacy:** Avoid using sensitive or personal data unless absolutely necessary, and ensure compliance with data privacy regulations.
+- **Follow Licensing and IP Rights:** Comply with all model licenses and institutional policies when deploying and using models.
+- **Restrict Access:** Limit access to deployed services by enforcing API key authentication and network-level restrictions where possible.
 
-### Retrieving the Address
-To get the address of the running job, execute:
-```bash
-JOBID=$(squeue --me -h -o "%.18i" | tail -n1)
-export ADDRESS=$(scontrol show job $JOBID --json | jq -r '.jobs[0].nodes').chn.perlmutter.nersc.gov
-```
+## Troubleshooting
 
-### Testing the Server
-To test the server, use the following `curl` command:
-```bash
-curl -X POST "${ADDRESS}:8000/v1/chat/completions" \
-	-H "Content-Type: application/json" \
-	--data '{
-		"model": "meta-llama/Llama-3.3-70B-Instruct",
-		"messages": [
-			{
-				"role": "user",
-				"content": "What is the capital of France?"
-			}
-		]
-	}'
-```
-
-### Running the Client
-To interact with the deployed model programmatically, you can use the following Python script:
-```python
-import os
-from openai import OpenAI
-# Set OpenAI's API key and API base to use vLLM's API server.
-openai_api_key = "EMPTY"
-openai_api_base = f"http://{os.getenv('ADDRESS')}:8000/v1"
-
-client = OpenAI(
-    api_key=openai_api_key,
-    base_url=openai_api_base,
-)
-
-chat_response = client.chat.completions.create(
-    model="meta-llama/Llama-3.3-70B-Instruct",
-    messages=[
-        {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Tell me how to run a slurm job."},
-    ]
-)
-print("Chat response:", chat_response)
-```
+- Ensure your NERSC account has proper permissions.
+- Verify Slurm queue and constraints match your allocation.
+- Check logs for errors; adjust `--log-level` for more verbosity.
+- Confirm network access for Gradio proxy URLs on JupyterHub.

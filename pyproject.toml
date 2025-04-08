@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nersc_chatbot_deploy"
+version = "0.0.1"
+authors = [
+  { name="Andrew Naylor", email="anaylor@lbl.gov" },
+]
+description = "Deploy LLM models using vLLM on NERSC supercomputers via Slurm."
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX",
+    "Operating System :: Unix",
+]
+dependencies = [
+  "typer",
+  "click", 
+  "gradio",
+  "openai"
+]
+license = "Apache-2.0"
+license-files = ["LICEN[CS]E*"]
+
+[project.urls]
+Homepage = "https://github.com/asnaylor/nersc_chatbot_deploy"
+Issues = "https://github.com/asnaylor/nersc_chatbot_deploy/issues"
+
+[project.scripts]
+nersc-chat = "nersc_chatbot_deploy.cli:app"
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "W503", "E501"]
+
+[tool.mypy]
+python_version = 3.8
+ignore_missing_imports = true
+disallow_untyped_defs = true

@@ -112,4 +112,12 @@ gr.load_chat(f"http://{node_address}:8000/v1", model="meta-llama/Llama-3.1-8B-In
 display_iframe(proxy_url)
 ```
 
+## Multi-node Deployments
+
+Currently, the `nersc_chatbot_deploy` package does not support multi-node deployments through either the command-line interface (CLI) or the Python library. All deployments are limited to single-node configurations, utilizing 4 Nvidia A100 GPUs per node. However, the underlying vLLM serving framework does support multi-node deployments using Ray.
+
+For users interested in setting up multi-node deployments manually, you can refer to the [example Slurm script for multi-node deployment](multinode_vllm.sh) that demonstrates how to configure a multi-node vLLM deployment using Ray.
+
+This script provides a basic framework for deploying vLLM across multiple nodes using Ray, leveraging the capabilities of NERSC's compute resources.
+
 **Note:** Keep your API key (`llm_api_key`) secure and do not expose it publicly.

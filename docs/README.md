@@ -9,7 +9,7 @@ For a high-level overview and quick start, see the [main README](../README.md).
 Use the `nersc-chat` CLI command to deploy models easily. Example:
 
 ```bash
-nersc-chat deploy -A your_account -m meta-llama/Llama-3.1-8B-Instruct
+nersc-chat -A your_account -m meta-llama/Llama-3.1-8B-Instruct
 ```
 
 When the service is up, the CLI will output the service address and API key to stdout. Optionally, you can use the `--json` flag to dump this information to a JSON file for easier programmatic access.

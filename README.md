@@ -16,8 +16,8 @@ python -m pip install git+https://github.com/NERSC/nersc_chatbot_deploy
 Deploy a model using the CLI:
 
 ```bash
-nersc-chat deploy -A your_account -m meta-llama/Llama-3.1-8B-Instruct
-# Use `nersc-chat deploy --help` for more options
+nersc-chat -A your_account -m meta-llama/Llama-3.1-8B-Instruct
+# Use `nersc-chat --help` for more options
 ```
 
 Or deploy using the Python library:

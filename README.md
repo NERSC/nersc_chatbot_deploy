@@ -10,7 +10,7 @@ Install the package:
 
 ```bash
 module load python
-python -m pip install git+https://github.com/asnaylor/nersc_chatbot_deploy
+python -m pip install git+https://github.com/NERSC/nersc_chatbot_deploy
 ```
 
 Deploy a model using the CLI:

@@ -4,11 +4,40 @@ This documentation provides detailed instructions for using the `nersc_chatbot_d
 
 For a high-level overview and quick start, see the [main README](../README.md).
 
+## How It Works
+
+The `nersc_chatbot_deploy` package deploys vLLM within a **Shifter container** on the NERSC Slurm cluster:
+
+1. **Slurm Allocation**: Requests GPU resources using `salloc`
+2. **Shifter Container**: Runs vLLM inside a containerized environment
+3. **vLLM Service**: Serves the model with an OpenAI-compatible API endpoint
+4. **Monitoring**: Tracks job status and service health
+
+**Default Shifter image**: `vllm/vllm-openai:v0.7.3`
+
+## NERSC Environment Setup
+
+**Important:** Configure your environment before deploying:
+
+```bash
+# Required for gated models (Llama, Mistral, etc.)
+export HF_TOKEN=<your-hf-token>
+
+# Use SCRATCH for better performance and space  
+export HF_HOME=$SCRATCH/huggingface
+
+# Optional: Use custom vLLM Shifter image
+export vLLM_IMAGE=vllm/vllm-openai:v0.10.0
+shifterimg pull $vLLM_IMAGE  # Ensure image is available
+```
+
 ## Command-Line Interface (CLI)
 
 Use the `nersc-chat` CLI command to deploy models easily. Example:
 
 ```bash
+export HF_TOKEN=<my-token>
+export HF_HOME=$SCRATCH/huggingface
 nersc-chat -A your_account -m meta-llama/Llama-3.1-8B-Instruct
 ```
 
@@ -41,7 +70,11 @@ Use the following key functions from the `nersc_chatbot_deploy` package:
 ### Example: Deploying a Model
 
 ```python
+import os
 from nersc_chatbot_deploy import deploy_llm
+
+os.environ['HF_TOKEN'] = "my_token"
+os.environ['HF_HOME'] = os.path.join(os.environ.get('SCRATCH'), 'huggingface')
 
 proc, llm_api_key = deploy_llm(
     account='your_account',
@@ -121,3 +154,10 @@ For users interested in setting up multi-node deployments manually, you can refe
 This script provides a basic framework for deploying vLLM across multiple nodes using Ray, leveraging the capabilities of NERSC's compute resources.
 
 **Note:** Keep your API key (`llm_api_key`) secure and do not expose it publicly.
+
+## Troubleshooting
+
+- Ensure your NERSC account has proper permissions.
+- Verify Slurm queue and constraints match your allocation.
+- Check logs for errors; adjust `--log-level` for more verbosity.
+- Confirm network access for Gradio proxy URLs on JupyterHub.

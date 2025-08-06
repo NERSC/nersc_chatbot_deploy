@@ -16,6 +16,10 @@ python -m pip install git+https://github.com/NERSC/nersc_chatbot_deploy
 Deploy a model using the CLI:
 
 ```bash
+module load python
+export HF_TOKEN=<my-token> # Required for gated models (Llama, Mistral, etc.)
+export HF_HOME=$SCRATCH/huggingface # Use SCRATCH for better performance and space
+
 nersc-chat -A your_account -m meta-llama/Llama-3.1-8B-Instruct
 # Use `nersc-chat --help` for more options
 ```
@@ -23,7 +27,11 @@ nersc-chat -A your_account -m meta-llama/Llama-3.1-8B-Instruct
 Or deploy using the Python library:
 
 ```python
+import os
 from nersc_chatbot_deploy import deploy_llm
+
+os.environ['HF_TOKEN'] = "my_token"
+os.environ['HF_HOME'] = os.path.join(os.environ.get('SCRATCH'), 'huggingface')
 
 proc, api_key = deploy_llm(
     account='your_account',
@@ -44,7 +52,9 @@ proc, api_key = deploy_llm(
 ## Installation & Prerequisites
 
 - Active NERSC account with permissions to run jobs on Perlmutter
-- Optional: Hugging Face access token set as `HF_TOKEN` environment variable for certain models
+- **Hugging Face access token** for gated models (Llama, Mistral, Code Llama, etc.)
+    - Create account at [huggingface.co](https://huggingface.co) and generate token
+    - Accept model license agreements before first use
 
 ## Usage
 
@@ -57,10 +67,3 @@ For detailed usage instructions, including CLI options and Python library exampl
 - **Respect Data Privacy:** Avoid using sensitive or personal data unless absolutely necessary, and ensure compliance with data privacy regulations.
 - **Follow Licensing and IP Rights:** Comply with all model licenses and institutional policies when deploying and using models.
 - **Restrict Access:** Limit access to deployed services by enforcing API key authentication and network-level restrictions where possible.
-
-## Troubleshooting
-
-- Ensure your NERSC account has proper permissions.
-- Verify Slurm queue and constraints match your allocation.
-- Check logs for errors; adjust `--log-level` for more verbosity.
-- Confirm network access for Gradio proxy URLs on JupyterHub.

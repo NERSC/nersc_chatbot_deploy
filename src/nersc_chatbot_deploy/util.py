@@ -7,10 +7,11 @@ dumping job metadata to JSON files.
 """
 
 import json
+import logging
 import random
 import uuid
 from enum import Enum
-from typing import Dict
+from typing import Dict, Union
 
 
 class SupportedBackends(str, Enum):
@@ -107,3 +108,17 @@ def dump_job_data_to_json(
 
     with open(file_path, "w") as json_file:
         json.dump(data, json_file, indent=4)
+
+
+def enable_logging(level: Union[int, str] = logging.DEBUG) -> None:
+    """
+    Enable console logging for interactive use in Jupyter notebooks and CLI tools.
+
+    Args:
+        level: The logging level to set (default: logging.DEBUG).
+    """
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        force=True,  # Prevents duplicate handlers and overwrites existing config
+    )

@@ -71,7 +71,11 @@ Use the following key functions from the `nersc_chatbot_deploy` package:
 
 ```python
 import os
-from nersc_chatbot_deploy import deploy_llm
+import logging
+from nersc_chatbot_deploy import deploy_llm, enable_logging
+
+# Enable logging to troubleshoot problems
+enable_logging(logging.INFO)
 
 os.environ['HF_TOKEN'] = "my_token"
 os.environ['HF_HOME'] = os.path.join(os.environ.get('SCRATCH'), 'huggingface')

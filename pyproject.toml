@@ -20,7 +20,8 @@ dependencies = [
   "typer",
   "click", 
   "gradio",
-  "openai"
+  "openai",
+  "ipython",
 ]
 license = "Apache-2.0"
 license-files = ["LICEN[CS]E*"]

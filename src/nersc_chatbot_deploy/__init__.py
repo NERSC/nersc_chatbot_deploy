@@ -12,23 +12,14 @@ Exports:
     - display_iframe: Utility to display an iframe for embedding Gradio UIs.
 """
 
-import logging
-import os
-
 from .deploy import deploy_llm, get_node_address, monitor_job_and_service
 from .gradio import display_iframe
+from .util import enable_logging
 
 __all__ = [
     "monitor_job_and_service",
     "deploy_llm",
+    "enable_logging",
     "get_node_address",
     "display_iframe",
 ]
-
-# Configure logging based on LOG_LEVEL environment variable (default: WARNING)
-log_level = os.getenv("LOG_LEVEL", "WARNING").upper()
-logging.basicConfig(
-    level=getattr(logging, log_level, logging.WARNING),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()],
-)

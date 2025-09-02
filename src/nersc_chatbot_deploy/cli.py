@@ -20,6 +20,7 @@ from nersc_chatbot_deploy.util import (
     LogLevel,
     SupportedBackends,
     dump_job_data_to_json,
+    enable_logging,
     generate_unique_name,
     parse_string_to_dict,
 )
@@ -111,7 +112,8 @@ def deploy(
         typer.Exit: Exits with code 1 if deployment fails or times out.
     """
     # Set the logging level based on the provided log_level option
-    logger.setLevel(getattr(logging, log_level.value))
+    enable_logging(getattr(logging, log_level.value))
+
     logger.info(
         f"Starting deployment with model={model}, account={account}, num_gpus={num_gpus}, job_name={job_name or 'auto-generated'}"
     )

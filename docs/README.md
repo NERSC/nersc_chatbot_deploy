@@ -66,12 +66,17 @@ Use the following key functions from the `nersc_chatbot_deploy` package:
 - [`get_node_address`](../src/nersc_chatbot_deploy/deploy.py#L215): Retrieve the node address of a running job
 - [`monitor_job_and_service`](../src/nersc_chatbot_deploy/deploy.py#L294): Monitor job and service status
 - [`display_iframe`](../src/nersc_chatbot_deploy/gradio.py#L10): Embed Gradio UI inline in Jupyter notebooks
+- [`enable_logging`](../src/nersc_chatbot_deploy/util.py#L113): Enable console logging for interactive use
 
 ### Example: Deploying a Model
 
 ```python
 import os
-from nersc_chatbot_deploy import deploy_llm
+import logging
+from nersc_chatbot_deploy import deploy_llm, enable_logging
+
+# Enable logging to troubleshoot problems
+enable_logging(logging.INFO)
 
 os.environ['HF_TOKEN'] = "my_token"
 os.environ['HF_HOME'] = os.path.join(os.environ.get('SCRATCH'), 'huggingface')

@@ -19,6 +19,7 @@ Deploy a model using the CLI:
 module load python
 export HF_TOKEN=<my-token> # Required for gated models (Llama, Mistral, etc.)
 export HF_HOME=$SCRATCH/huggingface # Use SCRATCH for better performance and space
+export vLLM_IMAGE=vllm/vllm-openai:v0.10.0 # Optional: Use custom vLLM Shifter image. Make sure image is avaliable in shifterimg
 
 nersc-chat -A your_account -m meta-llama/Llama-3.1-8B-Instruct
 # Use `nersc-chat --help` for more options
@@ -30,8 +31,9 @@ Or deploy using the Python library:
 import os
 from nersc_chatbot_deploy import deploy_llm
 
-os.environ['HF_TOKEN'] = "my_token"
+os.environ['HF_TOKEN'] = 'my_token'
 os.environ['HF_HOME'] = os.path.join(os.environ.get('SCRATCH'), 'huggingface')
+#os.environ['vLLM_IMAGE'] = 'vllm/vllm-openai:v0.10.0'
 
 proc, api_key = deploy_llm(
     account='your_account',

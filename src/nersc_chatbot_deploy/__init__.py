@@ -10,6 +10,7 @@ Exports:
     - get_node_address: Function to retrieve the node address of a running Slurm job.
     - monitor_job_and_service: Function to monitor Slurm jobs and deployed services.
     - display_iframe: Utility to display an iframe for embedding Gradio UIs.
+    - enable_logging: Enable console logging for interactive use.
 """
 
 from .deploy import deploy_llm, get_node_address, monitor_job_and_service

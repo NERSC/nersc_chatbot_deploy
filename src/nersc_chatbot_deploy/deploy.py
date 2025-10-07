@@ -173,7 +173,7 @@ def deploy_llm(
         logger.info("Generated API key for LLM service")
 
         # Get the vLLM_IMAGE from the environment or use default
-        vllm_image = os.getenv("vLLM_IMAGE", "vllm/vllm-openai:v0.7.3")
+        vllm_image = os.getenv("vLLM_IMAGE", "vllm/vllm-openai:v0.10.1.1")
         logger.debug(f"Using vLLM image: {vllm_image}")
 
         backend_command = (

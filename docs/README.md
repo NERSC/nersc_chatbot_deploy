@@ -13,7 +13,7 @@ The `nersc_chatbot_deploy` package deploys vLLM within a **Shifter container** o
 3. **vLLM Service**: Serves the model with an OpenAI-compatible API endpoint
 4. **Monitoring**: Tracks job status and service health
 
-**Default Shifter image**: `vllm/vllm-openai:v0.7.3`
+**Default Shifter image**: `vllm/vllm-openai:v0.10.1.1`
 
 ## NERSC Environment Setup
 

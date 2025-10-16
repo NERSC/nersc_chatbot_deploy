@@ -91,6 +91,13 @@ def deploy(
     log_level: Annotated[
         LogLevel, typer.Option("--log-level", "-l", help="Set the logging level.")
     ] = LogLevel.WARNING,
+    no_log_output: Annotated[
+        bool,
+        typer.Option(
+            "--no-log-output",
+            help="Disable logging output to file.",
+        ),
+    ] = False,
 ) -> None:
     """
     Deploys the LLM using the specified backend with the provided parameters.
@@ -107,6 +114,7 @@ def deploy(
         constraint (str): Slurm constraint for node selection (default "gpu").
         dump_json (bool): Whether to dump deployment info to a JSON file.
         log_level (LogLevel): Logging verbosity level.
+        no_log_output (bool): Disable log subprocess output to a file (default False).
 
     Raises:
         typer.Exit: Exits with code 1 if deployment fails or times out.
@@ -131,7 +139,7 @@ def deploy(
 
     # Execute Slurm job and deploy LLM
     try:
-        process, llm_api_key = deploy_llm(
+        process, llm_api_key, _ = deploy_llm(
             account,
             num_gpus,
             queue,
@@ -141,6 +149,7 @@ def deploy(
             backend.value,
             backend_args_dict,
             constraint,
+            not no_log_output,
         )
         logger.info(
             f"Deployment process started with PID: {process.pid if process else 'None'}"
@@ -152,6 +161,7 @@ def deploy(
         # Use monitor_job_and_service to wait for job and service readiness
         LLM_address = monitor_job_and_service(
             job_name=job_name,
+            process=process,
             api_url_template="http://{node_address}:8000/v1",
             endpoint="/models",
             api_key=llm_api_key,
@@ -168,6 +178,8 @@ def deploy(
             if process:
                 process.terminate()
             raise typer.Exit(code=1)
+        else:
+            typer.echo("✅ Service is up")
 
         # Dump address and key to file if requested
         if dump_json:

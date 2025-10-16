@@ -9,17 +9,182 @@ and check service health via RESTful APIs.
 import json
 import logging
 import os
+import queue
 import secrets
 import shlex
 import string
 import subprocess
+import sys
+import threading
 import time
+from datetime import datetime
 from math import ceil
-from typing import Dict, Optional, Tuple
+from typing import IO, Dict, Optional, Tuple
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+
+class ProcessLogger:
+    """
+    Manages background threads to capture stdout and stderr from a subprocess,
+    writing output to both a log file and the console in real-time.
+    """
+
+    def __init__(
+        self,
+        process: subprocess.Popen,
+        log_file_path: Optional[str],
+        job_name: str,
+    ):
+        """
+        Initializes the ProcessLogger and starts daemon reader threads.
+
+        Args:
+            process (subprocess.Popen): The subprocess to monitor.
+            log_file_path (Optional[str]): Path to the log file.
+            job_name (str): Name of the job (for logging context).
+        """
+        self.process = process
+        self.log_file_path = log_file_path
+        self.job_name = job_name
+        self.stdout_queue: queue.Queue[Tuple[str, Optional[str]]] = queue.Queue()
+        self.stderr_queue: queue.Queue[Tuple[str, Optional[str]]] = queue.Queue()
+        self.log_file = None
+        self.stdout_thread = None
+        self.stderr_thread = None
+
+        # Open the log file
+        if self.log_file_path:
+            try:
+                self.log_file = open(self.log_file_path, "w", encoding="utf-8")
+                logger.info(
+                    f"Logging output for job '{job_name}' to: {self.log_file_path}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to open log file {self.log_file_path}: {e}")
+                return
+
+        # Start reader threads as daemons
+        self.stdout_thread = threading.Thread(
+            target=self._reader_thread,
+            args=(self.process.stdout, self.stdout_queue, "STDOUT"),
+            daemon=True,
+        )
+        self.stderr_thread = threading.Thread(
+            target=self._reader_thread,
+            args=(self.process.stderr, self.stderr_queue, "STDERR"),
+            daemon=True,
+        )
+
+        self.stdout_thread.start()
+        self.stderr_thread.start()
+
+        # Start a processing thread to handle output
+        self.processor_thread = threading.Thread(
+            target=self._process_output,
+            daemon=True,
+        )
+        self.processor_thread.start()
+
+    def _reader_thread(
+        self, pipe: IO[str], q: queue.Queue[Tuple[str, Optional[str]]], stream_name: str
+    ) -> None:
+        """
+        Reads lines from a pipe and puts them into a queue.
+
+        Args:
+            pipe: The pipe to read from (stdout or stderr).
+            q (queue.Queue): The queue to put lines into.
+            stream_name (str): Name of the stream for logging.
+        """
+        try:
+            with pipe:
+                for line in iter(pipe.readline, ""):
+                    if line:
+                        q.put((stream_name, line))
+        except Exception as e:
+            logger.error(f"Error reading from {stream_name}: {e}")
+        finally:
+            q.put((stream_name, None))  # Signal that the pipe has closed
+
+    def _process_output(self) -> None:
+        """
+        Processes output from both stdout and stderr queues and writes to file and console.
+        """
+        stdout_closed = False
+        stderr_closed = False
+
+        while not stdout_closed or not stderr_closed:
+            # Process all available stdout lines
+            while not stdout_closed:
+                try:
+                    stream_name, line = self.stdout_queue.get(timeout=0.001)
+                    if line is None:
+                        stdout_closed = True
+                    else:
+                        self._write_output(stream_name, line)
+                except queue.Empty:
+                    break  # No more stdout data available right now
+
+            # Process all available stderr lines
+            while not stderr_closed:
+                try:
+                    stream_name, line = self.stderr_queue.get(timeout=0.001)
+                    if line is None:
+                        stderr_closed = True
+                    else:
+                        self._write_output(stream_name, line)
+                except queue.Empty:
+                    break  # No more stderr data available right now
+
+            # Small sleep only when both queues are empty
+            if not stdout_closed or not stderr_closed:
+                time.sleep(0.01)
+
+        logger.debug(f"Output processing completed for job '{self.job_name}'")
+
+    def _write_output(self, stream_name: str, line: str) -> None:
+        """
+        Writes a line of output to the log file and console.
+
+        Args:
+            stream_name (str): Name of the stream (STDOUT or STDERR).
+            line (str): The line to write.
+        """
+        if self.log_file:
+            if stream_name == "STDERR":
+                self.log_file.write(f"STDERR: {line}")
+            else:
+                self.log_file.write(line)
+            self.log_file.flush()
+
+        # Write to console
+        if stream_name == "STDERR":
+            print(f"STDERR: {line}", end="", file=sys.stderr)
+        else:
+            print(line, end="")
+        sys.stdout.flush()
+
+    def cleanup(self) -> None:
+        """
+        Waits for the process and threads to finish, then closes the log file.
+        """
+        logger.info(f"Cleaning up logger for job '{self.job_name}'")
+
+        # Wait for threads to finish
+        if self.stdout_thread and self.stdout_thread.is_alive():
+            self.stdout_thread.join(timeout=5)
+        if self.stderr_thread and self.stderr_thread.is_alive():
+            self.stderr_thread.join(timeout=5)
+        if self.processor_thread and self.processor_thread.is_alive():
+            self.processor_thread.join(timeout=5)
+
+        # Close the log file
+        if self.log_file:
+            self.log_file.close()
+            logger.info(f"Log file closed: {self.log_file_path}")
 
 
 def allocate_gpu_resources(
@@ -31,7 +196,8 @@ def allocate_gpu_resources(
     commands: str,
     constraint: str = "gpu",
     num_nodes: int = 1,
-) -> Optional[subprocess.Popen]:
+    log_output: bool = True,
+) -> Tuple[Optional[subprocess.Popen], Optional[ProcessLogger]]:
     """
     Executes the command to allocate GPU resources using the `salloc` command, and runs commands within the allocated session in the background.
 
@@ -47,9 +213,10 @@ def allocate_gpu_resources(
         commands (str): Additional commands to run within the allocated session.
         constraint (str, optional): The constraint to use with the `-C` option. Defaults to "gpu".
         num_nodes (int, optional): The number of nodes to request with the `-N` option. Defaults to 1.
+        log_output (bool, optional): Whether to log the output to a file. Defaults to True.
 
     Returns:
-        Optional[subprocess.Popen]: The Popen object representing the background process, or None if an error occurs.
+        Tuple[Optional[subprocess.Popen], Optional[ProcessLogger]]: The Popen object representing the background process and the ProcessLogger object, or (None, None) if an error occurs.
 
     Note:
         The subprocess.Popen runs asynchronously; the caller is responsible for managing the process lifecycle.
@@ -77,11 +244,20 @@ def allocate_gpu_resources(
 
         logger.info(f"Started process with PID: {process.pid}")
 
-        return process
+        # Create ProcessLogger if logging is enabled
+        process_logger = None
+        log_file_path = None
+        if log_output:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            log_file_path = f"{job_name}_{timestamp}.log"
+
+        process_logger = ProcessLogger(process, log_file_path, job_name)
+
+        return process, process_logger
     except Exception as e:
         # Handle any exceptions
         logger.error(f"An error occurred while starting the command: {e}")
-        return None
+        return None, None
 
 
 def generate_api_key(length: int = 32) -> str:
@@ -115,7 +291,8 @@ def deploy_llm(
     backend: str = "vllm",
     backend_args: Dict[str, str] = {},
     constraint: str = "gpu",
-) -> Tuple[Optional[subprocess.Popen], str]:
+    log_output: bool = True,
+) -> Tuple[Optional[subprocess.Popen], str, Optional[ProcessLogger]]:
     """
     Deploys the LLM using the specified backend with the provided parameters.
 
@@ -129,9 +306,10 @@ def deploy_llm(
         backend (str, optional): The backend to use (defaults to "vllm").
         backend_args (Dict[str, str], optional): Additional arguments to pass to the backend.
         constraint (str, optional): The constraint to use with the `-C` option. Defaults to "gpu".
+        log_output (bool, optional): Whether to log the output to a file. Defaults to True.
 
     Returns:
-        Tuple[Optional[subprocess.Popen], str]: The Popen object representing the background process, and the API key (if applicable), or None if an error occurs.
+        Tuple[Optional[subprocess.Popen], str, Optional[ProcessLogger]]: The Popen object representing the background process, the API key (if applicable), and the ProcessLogger object, or (None, "", None) if an error occurs.
 
     Raises:
         ValueError: If multi-node deployment is requested (unsupported).
@@ -197,7 +375,7 @@ def deploy_llm(
     logger.debug(f"Final backend command: {backend_command}")
 
     # Allocate GPU resources via Slurm and start the LLM process
-    process = allocate_gpu_resources(
+    process, process_logger = allocate_gpu_resources(
         account=account,
         num_gpus=num_gpus,
         queue=queue,
@@ -206,10 +384,11 @@ def deploy_llm(
         commands=backend_command,
         constraint=constraint,
         num_nodes=num_nodes,
+        log_output=log_output,
     )
     logger.info(f"Started Slurm job with PID: {process.pid if process else 'None'}")
 
-    return process, llm_api_key
+    return process, llm_api_key, process_logger
 
 
 def get_node_address(job_name: str) -> Optional[str]:
@@ -293,6 +472,7 @@ def check_service_status(
 
 def monitor_job_and_service(
     job_name: str,
+    process: Optional[subprocess.Popen] = None,
     api_url_template: str = "http://{node_address}:8000/v1",
     endpoint: str = "/models",
     api_key: Optional[str] = None,
@@ -300,13 +480,15 @@ def monitor_job_and_service(
     job_timeout: int = 300,
     service_timeout: int = 300,
     job_interval: int = 30,
-    service_interval: int = 60,
+    service_interval: int = 30,
 ) -> Optional[str]:
     """
     Monitors the Slurm job and service status by checking every interval seconds and times out after timeout seconds.
 
     Args:
         job_name (str): The name of the Slurm job.
+        process (Optional[subprocess.Popen]): The subprocess to monitor. If provided,
+            monitoring will fail if the process exits. Defaults to None.
         api_url_template (str): The template for the API URL with a `{node_address}` placeholder.
             Defaults to "http://{node_address}:8000/v1".
         endpoint (str): The endpoint to check the status. Default is "/models".
@@ -315,7 +497,7 @@ def monitor_job_and_service(
         job_timeout (int): The maximum time to wait for the job in seconds. Default is 300 seconds (5 minutes).
         service_timeout (int): The maximum time to wait for the service in seconds. Default is 300 seconds (5 minutes).
         job_interval (int): The interval between job checks in seconds. Default is 30 seconds.
-        service_interval (int): The interval between service checks in seconds. Default is 60 seconds.
+        service_interval (int): The interval between service checks in seconds. Default is 30 seconds.
 
     Returns:
         Optional[str]: The LLM address if both the job and service are running, None otherwise.
@@ -328,6 +510,13 @@ def monitor_job_and_service(
 
     # Check if the Slurm job is running
     while time.time() - start_time < job_timeout:
+        # Check if process has exited
+        if process and process.poll() is not None:
+            logger.error(
+                f"Process terminated with exit code {process.returncode} while waiting for job to start"
+            )
+            return None
+
         node_address = get_node_address(job_name)
         if node_address:
             logger.info(f"Job {job_name} is running.")
@@ -347,6 +536,13 @@ def monitor_job_and_service(
     # Check if the service is running
     start_time = time.time()
     while time.time() - start_time < service_timeout:
+        # Check if process has exited
+        if process and process.poll() is not None:
+            logger.error(
+                f"Process terminated with exit code {process.returncode} while waiting for service to start"
+            )
+            return None
+
         try:
             is_service_up = check_service_status(
                 api_url, endpoint, api_key, expected_status
@@ -362,7 +558,6 @@ def monitor_job_and_service(
 
         if is_service_up:
             logger.info("Service is up and running.")
-            print("✅ Service is up")
             return api_url
         else:
             logger.info(

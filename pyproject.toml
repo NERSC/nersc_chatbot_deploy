@@ -18,10 +18,11 @@ classifiers = [
 ]
 dependencies = [
   "typer",
-  "click", 
+  "click",
   "gradio",
   "openai",
   "ipython",
+  "rich",
 ]
 license = "Apache-2.0"
 license-files = ["LICEN[CS]E*"]

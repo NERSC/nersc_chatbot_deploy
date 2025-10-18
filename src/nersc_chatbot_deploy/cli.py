@@ -91,6 +91,29 @@ def deploy(
     log_level: Annotated[
         LogLevel, typer.Option("--log-level", "-l", help="Set the logging level.")
     ] = LogLevel.WARNING,
+    no_log_output: Annotated[
+        bool,
+        typer.Option(
+            "--no-log-output",
+            help="Disable logging output to file.",
+            is_flag=True,
+        ),
+    ] = False,
+    no_rich_display: Annotated[
+        bool,
+        typer.Option(
+            "--no-rich-display",
+            help="Disable Rich Live display and use standard console output instead.",
+            is_flag=True,
+        ),
+    ] = False,
+    max_display_lines: Annotated[
+        int,
+        typer.Option(
+            "--max-display-lines",
+            help="Maximum number of lines to display in the Rich panel.",
+        ),
+    ] = 20,
 ) -> None:
     """
     Deploys the LLM using the specified backend with the provided parameters.
@@ -107,6 +130,9 @@ def deploy(
         constraint (str): Slurm constraint for node selection (default "gpu").
         dump_json (bool): Whether to dump deployment info to a JSON file.
         log_level (LogLevel): Logging verbosity level.
+        no_log_output (bool): Disable log subprocess output to a file (default False).
+        no_rich_display (bool): Disable Rich Live display and use standard output (default False).
+        max_display_lines (int): Maximum number of lines in Rich display panel (default 20).
 
     Raises:
         typer.Exit: Exits with code 1 if deployment fails or times out.
@@ -131,7 +157,7 @@ def deploy(
 
     # Execute Slurm job and deploy LLM
     try:
-        process, llm_api_key = deploy_llm(
+        process, llm_api_key, process_logger = deploy_llm(
             account,
             num_gpus,
             queue,
@@ -141,6 +167,9 @@ def deploy(
             backend.value,
             backend_args_dict,
             constraint,
+            not no_log_output,
+            not no_rich_display,
+            max_display_lines,
         )
         logger.info(
             f"Deployment process started with PID: {process.pid if process else 'None'}"
@@ -152,6 +181,7 @@ def deploy(
         # Use monitor_job_and_service to wait for job and service readiness
         LLM_address = monitor_job_and_service(
             job_name=job_name,
+            process=process,
             api_url_template="http://{node_address}:8000/v1",
             endpoint="/models",
             api_key=llm_api_key,
@@ -163,11 +193,16 @@ def deploy(
         )
 
         if LLM_address is None:
-            logger.error("Failed to detect running job or service. Exiting.")
+            error_msg = "Failed to detect running job or service."
+            if not no_log_output and process_logger is not None:
+                error_msg += f" See {process_logger.log_file_path} for more details."
+            logger.error(error_msg)
             typer.echo("❌ Error: Deployment failed or timed out.")
             if process:
                 process.terminate()
             raise typer.Exit(code=1)
+        else:
+            typer.echo("✅ Service is up")
 
         # Dump address and key to file if requested
         if dump_json:

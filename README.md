@@ -35,7 +35,7 @@ os.environ['HF_TOKEN'] = 'my_token'
 os.environ['HF_HOME'] = os.path.join(os.environ.get('SCRATCH'), 'huggingface')
 #os.environ['vLLM_IMAGE'] = 'vllm/vllm-openai:v0.10.0'
 
-proc, api_key = deploy_llm(
+proc, api_key, process_logger = deploy_llm(
     account='your_account',
     num_gpus=1,
     queue='shared_interactive',

@@ -17,11 +17,17 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from math import ceil
 from typing import IO, Dict, Optional, Tuple
 
 import requests
+from rich.box import ROUNDED
+from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
+from rich.text import Text
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +43,8 @@ class ProcessLogger:
         process: subprocess.Popen,
         log_file_path: Optional[str],
         job_name: str,
+        use_rich_display: bool = False,
+        max_display_lines: int = 20,
     ):
         """
         Initializes the ProcessLogger and starts daemon reader threads.
@@ -45,6 +53,8 @@ class ProcessLogger:
             process (subprocess.Popen): The subprocess to monitor.
             log_file_path (Optional[str]): Path to the log file.
             job_name (str): Name of the job (for logging context).
+            use_rich_display (bool): Whether to use Rich Live display for console output.
+            max_display_lines (int): Maximum number of lines to display in Rich panel.
         """
         self.process = process
         self.log_file_path = log_file_path
@@ -54,6 +64,9 @@ class ProcessLogger:
         self.log_file = None
         self.stdout_thread = None
         self.stderr_thread = None
+        self.use_rich_display = use_rich_display
+        self.max_display_lines = max_display_lines
+        self.live = None
 
         # Open the log file
         if self.log_file_path:
@@ -64,7 +77,20 @@ class ProcessLogger:
                 )
             except Exception as e:
                 logger.error(f"Failed to open log file {self.log_file_path}: {e}")
-                return
+
+        # Initialize Rich display if enabled
+        if self.use_rich_display:
+            self.display_deque = deque(
+                [""] * max_display_lines, maxlen=max_display_lines
+            )
+            self.console = Console()
+            self.live = Live(console=self.console, screen=False, auto_refresh=False)
+            try:
+                self.live.start()
+                logger.debug(f"Started Rich Live display for job '{job_name}'")
+            except Exception as e:
+                logger.error(f"Failed to start Rich display: {e}")
+                self.use_rich_display = False  # Fallback to regular print
 
         # Start reader threads as daemons
         self.stdout_thread = threading.Thread(
@@ -153,6 +179,7 @@ class ProcessLogger:
             stream_name (str): Name of the stream (STDOUT or STDERR).
             line (str): The line to write.
         """
+        # File logging (unchanged)
         if self.log_file:
             if stream_name == "STDERR":
                 self.log_file.write(f"STDERR: {line}")
@@ -160,16 +187,58 @@ class ProcessLogger:
                 self.log_file.write(line)
             self.log_file.flush()
 
-        # Write to console
-        if stream_name == "STDERR":
-            print(f"STDERR: {line}", end="", file=sys.stderr)
+        # Console output
+        if self.use_rich_display:
+            self._update_rich_display(stream_name, line)
         else:
-            print(line, end="")
-        sys.stdout.flush()
+            # Original print behavior
+            if stream_name == "STDERR":
+                print(f"STDERR: {line}", end="", file=sys.stderr)
+            else:
+                print(line, end="")
+            sys.stdout.flush()
+
+    def _update_rich_display(self, stream_name: str, line: str) -> None:
+        """
+        Updates the Rich Live display with a new line of output.
+
+        Args:
+            stream_name (str): Name of the stream (STDOUT or STDERR).
+            line (str): The line to display.
+        """
+        try:
+            # Format line with optional STDERR prefix
+            if stream_name == "STDERR":
+                display_line = f"[red]STDERR:[/red] {line.rstrip()}"
+            else:
+                display_line = line.rstrip()
+
+            # Add to deque (oldest line automatically removed if full)
+            self.display_deque.append(display_line)
+
+            # Create renderable from deque
+            log_text = Text.from_markup("\n".join(self.display_deque))
+
+            panel = Panel(
+                log_text,
+                title=f"🚀 {self.job_name}",
+                border_style="blue",
+                box=ROUNDED,
+                padding=(0, 1),
+            )
+
+            # Update live display
+            if self.live:
+                self.live.update(panel, refresh=True)
+
+        except Exception as e:
+            logger.error(f"Error updating Rich display: {e}")
+            # Fallback to stderr for this line
+            print(f"STDERR: {line}" if stream_name == "STDERR" else line, end="")
 
     def cleanup(self) -> None:
         """
-        Waits for the process and threads to finish, then closes the log file.
+        Waits for the process and threads to finish, then closes the log file and stops Rich display.
         """
         logger.info(f"Cleaning up logger for job '{self.job_name}'")
 
@@ -180,6 +249,14 @@ class ProcessLogger:
             self.stderr_thread.join(timeout=5)
         if self.processor_thread and self.processor_thread.is_alive():
             self.processor_thread.join(timeout=5)
+
+        # Stop Rich display
+        if self.use_rich_display and self.live:
+            try:
+                self.live.stop()
+                logger.debug(f"Stopped Rich Live display for job '{self.job_name}'")
+            except Exception as e:
+                logger.error(f"Error stopping Rich display: {e}")
 
         # Close the log file
         if self.log_file:
@@ -197,6 +274,8 @@ def allocate_gpu_resources(
     constraint: str = "gpu",
     num_nodes: int = 1,
     log_output: bool = True,
+    use_rich_display: bool = False,
+    max_display_lines: int = 20,
 ) -> Tuple[Optional[subprocess.Popen], Optional[ProcessLogger]]:
     """
     Executes the command to allocate GPU resources using the `salloc` command, and runs commands within the allocated session in the background.
@@ -214,6 +293,8 @@ def allocate_gpu_resources(
         constraint (str, optional): The constraint to use with the `-C` option. Defaults to "gpu".
         num_nodes (int, optional): The number of nodes to request with the `-N` option. Defaults to 1.
         log_output (bool, optional): Whether to log the output to a file. Defaults to True.
+        use_rich_display (bool, optional): Whether to use Rich Live display for console output. Defaults to False.
+        max_display_lines (int, optional): Maximum number of lines to display in Rich panel. Defaults to 20.
 
     Returns:
         Tuple[Optional[subprocess.Popen], Optional[ProcessLogger]]: The Popen object representing the background process and the ProcessLogger object, or (None, None) if an error occurs.
@@ -251,7 +332,13 @@ def allocate_gpu_resources(
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             log_file_path = f"{job_name}_{timestamp}.log"
 
-        process_logger = ProcessLogger(process, log_file_path, job_name)
+        process_logger = ProcessLogger(
+            process,
+            log_file_path,
+            job_name,
+            use_rich_display=use_rich_display,
+            max_display_lines=max_display_lines,
+        )
 
         return process, process_logger
     except Exception as e:
@@ -292,6 +379,8 @@ def deploy_llm(
     backend_args: Dict[str, str] = {},
     constraint: str = "gpu",
     log_output: bool = True,
+    use_rich_display: bool = False,
+    max_display_lines: int = 20,
 ) -> Tuple[Optional[subprocess.Popen], str, Optional[ProcessLogger]]:
     """
     Deploys the LLM using the specified backend with the provided parameters.
@@ -307,6 +396,8 @@ def deploy_llm(
         backend_args (Dict[str, str], optional): Additional arguments to pass to the backend.
         constraint (str, optional): The constraint to use with the `-C` option. Defaults to "gpu".
         log_output (bool, optional): Whether to log the output to a file. Defaults to True.
+        use_rich_display (bool, optional): Whether to use Rich Live display for console output. Defaults to False.
+        max_display_lines (int, optional): Maximum number of lines to display in Rich panel. Defaults to 20.
 
     Returns:
         Tuple[Optional[subprocess.Popen], str, Optional[ProcessLogger]]: The Popen object representing the background process, the API key (if applicable), and the ProcessLogger object, or (None, "", None) if an error occurs.
@@ -385,6 +476,8 @@ def deploy_llm(
         constraint=constraint,
         num_nodes=num_nodes,
         log_output=log_output,
+        use_rich_display=use_rich_display,
+        max_display_lines=max_display_lines,
     )
     logger.info(f"Started Slurm job with PID: {process.pid if process else 'None'}")
 

@@ -56,6 +56,9 @@ When the service is up, the CLI will output the service address and API key to s
 - `--constraint`, `-C` (default: `gpu`): Slurm node constraint
 - `--json`: Dump deployment info to a JSON file
 - `--log-level`, `-l` (default: `WARNING`): Logging verbosity level
+- `--no-log-output`: Disable logging subprocess output to file (default: disabled)
+- `--no-rich-display`: Disable Rich Live display and use standard console output (default: disabled)
+- `--max-display-lines` (default: 20): Maximum number of lines to display in Rich panel
 - `--help`: Show help message
 
 ## Python Library
@@ -81,15 +84,22 @@ enable_logging(logging.INFO)
 os.environ['HF_TOKEN'] = "my_token"
 os.environ['HF_HOME'] = os.path.join(os.environ.get('SCRATCH'), 'huggingface')
 
-proc, llm_api_key = deploy_llm(
+# Deploy model (returns 3 values: process, api_key, process_logger)
+proc, llm_api_key, process_logger = deploy_llm(
     account='your_account',
     num_gpus=1,
     queue='shared_interactive',
     time='01:00:00',
     job_name='vLLM_test',
-    model='meta-llama/Llama-3.1-8B-Instruct'
+    model='meta-llama/Llama-3.1-8B-Instruct',
+    backend_args={'tensor-parallel-size': '1'},  # Use dict for library, not string
+    log_output=True,  # Logs saved to {job_name}_{timestamp}.log
+    use_rich_display=False,  # Set True for live console display
 )
+
 print(f"API key: {llm_api_key}")
+if process_logger and process_logger.log_file_path:
+    print(f"Logs: {process_logger.log_file_path}")
 ```
 
 ### Example: Retrieving Service Address
@@ -113,6 +123,7 @@ from nersc_chatbot_deploy import monitor_job_and_service
 
 LLM_address = monitor_job_and_service(
     job_name='vLLM_test',
+    process=proc,  # Important: monitors process for early failure detection
     api_url_template="http://{node_address}:8000/v1",
     endpoint="/models",
     api_key=llm_api_key,
@@ -127,6 +138,8 @@ if LLM_address:
     print(f"LLM service is up at: {LLM_address}")
 else:
     print("Failed to start the LLM service.")
+    if proc:
+        proc.terminate()
 ```
 
 ## Accessing the LLM via Gradio on NERSC JupyterHub

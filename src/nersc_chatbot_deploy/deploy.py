@@ -179,21 +179,17 @@ class ProcessLogger:
             stream_name (str): Name of the stream (STDOUT or STDERR).
             line (str): The line to write.
         """
-        # File logging (unchanged)
+        # File logging
         if self.log_file:
-            if stream_name == "STDERR":
-                self.log_file.write(f"STDERR: {line}")
-            else:
-                self.log_file.write(line)
+            self.log_file.write(line)
             self.log_file.flush()
 
         # Console output
         if self.use_rich_display:
             self._update_rich_display(stream_name, line)
         else:
-            # Original print behavior
             if stream_name == "STDERR":
-                print(f"STDERR: {line}", end="", file=sys.stderr)
+                print(f"{line}", end="", file=sys.stderr)
             else:
                 print(line, end="")
             sys.stdout.flush()
@@ -442,7 +438,7 @@ def deploy_llm(
         logger.info("Generated API key for LLM service")
 
         # Get the vLLM_IMAGE from the environment or use default
-        vllm_image = os.getenv("vLLM_IMAGE", "vllm/vllm-openai:v0.10.1.1")
+        vllm_image = os.getenv("vLLM_IMAGE", "vllm/vllm-openai:v0.11.0")
         logger.debug(f"Using vLLM image: {vllm_image}")
 
         backend_command = (

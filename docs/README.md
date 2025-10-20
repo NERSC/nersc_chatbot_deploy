@@ -13,7 +13,7 @@ The `nersc_chatbot_deploy` package deploys vLLM within a **Shifter container** o
 3. **vLLM Service**: Serves the model with an OpenAI-compatible API endpoint
 4. **Monitoring**: Tracks job status and service health
 
-**Default Shifter image**: `vllm/vllm-openai:v0.10.1.1`
+**Default Shifter image**: `vllm/vllm-openai:v0.11.0`
 
 ## NERSC Environment Setup
 
@@ -57,7 +57,7 @@ When the service is up, the CLI will output the service address and API key to s
 - `--json`: Dump deployment info to a JSON file
 - `--log-level`, `-l` (default: `WARNING`): Logging verbosity level
 - `--no-log-output`: Disable logging subprocess output to file (default: disabled)
-- `--no-rich-display`: Disable Rich Live display and use standard console output (default: disabled)
+- `--rich-display`: Enable Rich Live display and use standard console output (experimental) (default: disabled)
 - `--max-display-lines` (default: 20): Maximum number of lines to display in Rich panel
 - `--help`: Show help message
 

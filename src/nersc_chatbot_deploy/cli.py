@@ -99,11 +99,11 @@ def deploy(
             is_flag=True,
         ),
     ] = False,
-    no_rich_display: Annotated[
+    rich_display: Annotated[
         bool,
         typer.Option(
-            "--no-rich-display",
-            help="Disable Rich Live display and use standard console output instead.",
+            "--rich-display",
+            help="Enable Rich Live display and use standard console output instead. (experimental)",
             is_flag=True,
         ),
     ] = False,
@@ -131,7 +131,7 @@ def deploy(
         dump_json (bool): Whether to dump deployment info to a JSON file.
         log_level (LogLevel): Logging verbosity level.
         no_log_output (bool): Disable log subprocess output to a file (default False).
-        no_rich_display (bool): Disable Rich Live display and use standard output (default False).
+        rich_display (bool): Enable Rich Live display and use standard output (experimental) (default False).
         max_display_lines (int): Maximum number of lines in Rich display panel (default 20).
 
     Raises:
@@ -168,7 +168,7 @@ def deploy(
             backend_args_dict,
             constraint,
             not no_log_output,
-            not no_rich_display,
+            rich_display,
             max_display_lines,
         )
         logger.info(
@@ -186,8 +186,8 @@ def deploy(
             endpoint="/models",
             api_key=llm_api_key,
             expected_status=200,
-            job_timeout=600,  # optional: adjust timeouts as needed
-            service_timeout=600,
+            job_timeout=600,
+            service_timeout=900,
             job_interval=30,
             service_interval=30,
         )

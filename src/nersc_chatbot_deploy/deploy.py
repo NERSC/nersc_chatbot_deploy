@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import queue
+import re
 import secrets
 import shlex
 import string
@@ -23,6 +24,7 @@ from math import ceil
 from typing import IO, Dict, Optional, Tuple
 
 import requests
+from packaging.version import InvalidVersion, Version
 from rich.box import ROUNDED
 from rich.console import Console
 from rich.live import Live
@@ -30,6 +32,35 @@ from rich.panel import Panel
 from rich.text import Text
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_VLLM_IMAGE = "vllm/vllm-openai:v0.15.0"
+_VLLM_TVM_FFI_CACHE_MIN_VERSION = Version("0.12.0")
+
+
+def _parse_vllm_image_version(vllm_image: str) -> Optional[Version]:
+    """
+    Parse a vLLM image tag into a PEP 440 Version for comparisons.
+
+    Examples:
+        vllm/vllm-openai:v0.11.0 -> Version("0.11.0")
+        vllm/vllm-openai:0.12.1  -> Version("0.12.1")
+
+    Returns None if the image doesn't include a parseable version tag.
+    """
+    if ":" not in vllm_image:
+        return None
+
+    tag = vllm_image.rsplit(":", 1)[1].lstrip("v")
+    try:
+        return Version(tag)
+    except InvalidVersion:
+        match = re.search(r"\d+\.\d+\.\d+", tag)
+        if not match:
+            return None
+        try:
+            return Version(match.group(0))
+        except InvalidVersion:
+            return None
 
 
 class ProcessLogger:
@@ -438,8 +469,21 @@ def deploy_llm(
         logger.info("Generated API key for LLM service")
 
         # Get the vLLM_IMAGE from the environment or use default
-        vllm_image = os.getenv("vLLM_IMAGE", "vllm/vllm-openai:v0.11.0")
+        vllm_image = os.getenv("vLLM_IMAGE", _DEFAULT_VLLM_IMAGE)
         logger.debug(f"Using vLLM image: {vllm_image}")
+
+        # TVM FFI cache handling
+        tvm_ffi_cache_dir = os.getenv("TVM_FFI_CACHE_DIR")
+        if not tvm_ffi_cache_dir:
+            vllm_version = _parse_vllm_image_version(vllm_image)
+            if vllm_version and vllm_version >= _VLLM_TVM_FFI_CACHE_MIN_VERSION:
+                tvm_ffi_cache_dir = "${SCRATCH}/cache_tvm_ffi"
+                logger.info(
+                    "TVM_FFI_CACHE_DIR not set; detected vLLM image version %s >= %s, "
+                    "setting TVM_FFI_CACHE_DIR to ${SCRATCH}/cache_tvm_ffi.",
+                    vllm_version,
+                    _VLLM_TVM_FFI_CACHE_MIN_VERSION,
+                )
 
         backend_command = (
             f"srun -n 1 --cpus-per-task={cpus_per_task} --gpus-per-task={gpus_per_task} "
@@ -448,6 +492,7 @@ def deploy_llm(
             "    --module=gpu,nccl-plugin "
             f"{f'--env=HF_TOKEN={hf_token}' if hf_token else ''} "
             f"{f'--env=HF_HOME={hf_home}' if hf_home else ''} "
+            f"{f'--env=TVM_FFI_CACHE_DIR={tvm_ffi_cache_dir}' if tvm_ffi_cache_dir else ''} "
             f"        vllm serve {model} "
             f"             --api-key {llm_api_key}"
         )

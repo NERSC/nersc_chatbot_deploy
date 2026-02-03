@@ -22,6 +22,7 @@ dependencies = [
   "gradio",
   "openai",
   "ipython",
+  "packaging",
   "rich",
 ]
 license = "Apache-2.0"

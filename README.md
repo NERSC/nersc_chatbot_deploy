@@ -19,7 +19,7 @@ Deploy a model using the CLI:
 module load python
 export HF_TOKEN=<my-token> # Required for gated models (Llama, Mistral, etc.)
 export HF_HOME=$SCRATCH/huggingface # Use SCRATCH for better performance and space
-export vLLM_IMAGE=vllm/vllm-openai:v0.10.0 # Optional: Use custom vLLM Shifter image. Make sure image is avaliable in shifterimg
+#export vLLM_IMAGE=vllm/vllm-openai:v0.10.0 # Optional: Use custom vLLM Shifter image. Make sure image is avaliable in shifterimg
 
 nersc-chat -A your_account -m meta-llama/Llama-3.1-8B-Instruct
 # Use `nersc-chat --help` for more options
